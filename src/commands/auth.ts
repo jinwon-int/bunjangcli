@@ -35,4 +35,45 @@ export function registerAuth(program: Command): void {
       if (this.parent?.parent?.opts().json) printJson(result);
       else printSessionStatus(result.status);
     });
+
+  auth
+    .command('export <destPath>')
+    .description(
+      'Copy this session (cookies/browser profile) to a portable directory so it can be moved to another ' +
+        'machine — e.g. run `auth login` on a machine with a display, export the result, then copy it ' +
+        '(scp/rsync) to a headless server and run `auth import` there. No browser needed on the headless side.',
+    )
+    .option('--force', 'overwrite a non-empty destination directory')
+    .action(async function (destPath: string, cmdOpts: { force?: boolean }) {
+      const ctx = createAppContext(this.parent?.parent?.opts());
+      const result = await ctx.sessionService.exportSession(destPath, { force: !!cmdOpts.force });
+      if (this.parent?.parent?.opts().json) printJson(result);
+      else {
+        console.log(`Exported session to ${result.exportedTo}`);
+        console.warn(`\n⚠️  ${result.warning}\n`);
+      }
+    });
+
+  auth
+    .command('import <srcPath>')
+    .description(
+      'Import a session directory previously produced by `auth export` (e.g. copied in via scp/rsync) so ' +
+        'this machine is authenticated without opening a browser. Intended for headless servers/CI/agent nodes.',
+    )
+    .action(async function (srcPath: string) {
+      const ctx = createAppContext(this.parent?.parent?.opts());
+      const result = await ctx.sessionService.importSession(srcPath);
+      if (this.parent?.parent?.opts().json) printJson(result);
+      else {
+        if (result.backedUpTo) console.log(`Existing session backed up to ${result.backedUpTo}`);
+        console.log('Import complete.');
+        if (result.statusCheckError) {
+          console.warn(
+            `⚠️  Could not verify the session live (${result.statusCheckError}). ` +
+              'The import itself succeeded — run `auth status` once a browser is available to confirm login.',
+          );
+        }
+        printSessionStatus(result.status);
+      }
+    });
 }

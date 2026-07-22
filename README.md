@@ -75,6 +75,47 @@ npx bunjang-cli --json auth logout
 BUNJANG_CONFIG_DIR=/custom/path npx bunjang-cli auth status
 ```
 
+### 헤드리스 서버(디스플레이 없는 SSH-only VPS 등)에서 로그인하기
+
+`auth login`은 headful 브라우저 창 + 같은 TTY에서의 Enter 입력이 필요해서, 화면이 없는 서버에서는 그대로 실행할 수 없습니다.
+대신 화면이 있는 곳에서 로그인한 세션을 **내보내서(export) 헤드리스 서버로 옮긴 뒤 가져오면(import)** 됩니다.
+
+> 헤드리스 서버에도 Playwright의 **헤드리스** Chromium 실행 파일은 필요합니다(디스플레이는 필요 없습니다 — 실행 파일만 있으면 됨).
+> 처음 한 번만 받으면 됩니다:
+> ```bash
+> npx playwright install chromium-headless-shell
+> ```
+
+**1. 화면이 있는 머신에서 로그인 후 세션 내보내기**
+```bash
+npx bunjang-cli auth login
+npx bunjang-cli auth export ./bunjang-session
+```
+
+**2. 내보낸 디렉토리를 헤드리스 서버로 복사** (보안 채널만 사용 — scp/rsync over SSH)
+```bash
+scp -r ./bunjang-session user@headless-server:/tmp/bunjang-session
+```
+
+**3. 헤드리스 서버에서 가져오기**
+```bash
+npx bunjang-cli auth import /tmp/bunjang-session
+npx bunjang-cli auth status   # authenticated: true 확인
+```
+
+`auth import`는 기존 세션이 있으면 지우지 않고 `<config-dir>.bak-<timestamp>`로 백업한 뒤 덮어씁니다. 대상 디렉토리가 `session.json`/`browser-profile`을 갖춘 export 결과가 아니면 가져오기를 거부하고, 자기 자신의 세션 디렉토리를 스스로 import하는 것도 거부합니다.
+
+브라우저는 쿠키를 OS 키링(gnome-keyring/kwallet/macOS Keychain 등)으로 암호화해 저장하는 경우가 있는데, 이러면 다른 머신(특히 키링이 없는 헤드리스 서버)으로 복사했을 때 쿠키를 못 읽을 수 있습니다. 이를 피하려고 `auth login`/`auth status`/`auth import` 후 상태확인이 모두 Chromium을 **`--password-store=basic`**(키링 없이도 항상 같은 방식으로 동작하는 이식 가능한 암호화)로 실행하도록 고정해뒀습니다. 다만 이 변경 **이전에** `auth login`한 세션은 이미 키링으로 암호화됐을 수 있으니, `auth import` 후 `authenticated: false`가 나오면 원본 머신에서 `auth logout` 후 다시 `auth login`(→ 재-export)해보세요.
+
+⚠️ **내보낸 디렉토리는 로그인 쿠키/브라우저 프로필을 담고 있어 사실상 비밀번호와 같습니다.** 보안 채널(scp/rsync over SSH)로만 옮기고, git에 커밋하거나 내용을 다른 곳에 붙여넣지 마세요. 옮긴 뒤에는 남은 사본을 지우는 게 안전합니다. 기존 워크어라운드(`~/.config/bunjang-cli/` 폴더를 통째로 수동 복사)는 계속 동작하지만, `export`/`import`가 유효성 검증·백업·권한 고정(0700/0600)까지 해주는 정식 경로입니다.
+
+⚠️ `auth export`/`auth import`는 같은 세션 디렉토리를 건드리는 다른 `bunjang-cli` 명령(예: 동시에 실행 중인 `auth status`/`login`/검색·채팅 등)과 동시에 실행하지 마세요 — 파일 잠금이 없어서, 동시에 실행하면 그 명령이 백업 디렉토리 쪽에 쓰기 작업을 하게 될 수 있습니다. 한 번에 하나씩 실행하면 문제 없습니다.
+
+```bash
+# --force로 내보내기 대상 디렉토리를 덮어쓸 수 있습니다
+npx bunjang-cli auth export ./bunjang-session --force
+```
+
 ---
 
 ## 기본 사용법
