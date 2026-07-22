@@ -18,7 +18,7 @@ description: 번개장터를 CLI로 검색, 상세조회, 찜, 채팅, 대량수
 - 대량 결과를 JSON 파일 또는 AI용 TOON chunk로 저장
 
 ## 실행 원칙
-- README 예시와 동일하게 **항상 `npx bunjang-cli ...` 형식**으로 실행한다.
+- README 예시와 동일하게 **항상 `npx @jinon86/bunjang-cli ...` 형식**으로 실행한다.
 - `auth login`은 headful 브라우저를 띄운 뒤 **현재 터미널이 TTY 상태여야 하고, 로그인 완료 후 터미널에서 Enter를 눌러야** 끝난다. 비-TTY 실행에서는 로그인 브라우저만 뜨고 완료 처리가 멈출 수 있으므로 interactive/TTY 세션으로 실행한다.
 - **디스플레이가 없는 헤드리스 노드(SSH-only VPS 등)에서 에이전트가 직접 `auth login`을 실행할 수는 없다.** 화면 있는 머신에서 로그인 후 `auth export <dir>`로 세션을 내보내고, 보안 채널(scp/rsync over SSH)로 헤드리스 노드에 옮긴 뒤 `auth import <dir>`로 가져오게 한다. 자세한 절차는 README의 "헤드리스 서버에서 로그인하기" 참고. 내보낸 디렉토리는 로그인 쿠키를 담고 있으므로 비밀번호처럼 취급하고 안전한 채널로만 옮긴다.
 - 검색 노이즈(광고, 타모델, 액세서리)가 섞일 수 있음을 전제하고, 필요하면 후처리로 정제한다.
@@ -43,13 +43,13 @@ description: 번개장터를 CLI로 검색, 상세조회, 찜, 채팅, 대량수
 
 ### 로그인
 ```bash
-npx bunjang-cli auth login
-npx bunjang-cli auth logout
-npx bunjang-cli --json auth status
+npx @jinon86/bunjang-cli auth login
+npx @jinon86/bunjang-cli auth logout
+npx @jinon86/bunjang-cli --json auth status
 
 # 헤드리스 노드 전용: 화면 있는 머신에서 export → scp/rsync로 이전 → 헤드리스에서 import
-npx bunjang-cli auth export ./bunjang-session
-npx bunjang-cli auth import /path/to/bunjang-session
+npx @jinon86/bunjang-cli auth export ./bunjang-session
+npx @jinon86/bunjang-cli auth import /path/to/bunjang-session
 ```
 
 - `auth login`은 브라우저에서 로그인 후 **터미널로 돌아와 Enter를 눌러야** 성공 처리된다.
@@ -58,14 +58,14 @@ npx bunjang-cli auth import /path/to/bunjang-session
 
 ### 검색
 ```bash
-npx bunjang-cli search "갤럭시 s25 울트라"
-npx bunjang-cli search "갤럭시 s25 울트라" --price-min 900000 --price-max 1100000
-npx bunjang-cli search "갤럭시 s25 울트라" --sort price_asc
+npx @jinon86/bunjang-cli search "갤럭시 s25 울트라"
+npx @jinon86/bunjang-cli search "갤럭시 s25 울트라" --price-min 900000 --price-max 1100000
+npx @jinon86/bunjang-cli search "갤럭시 s25 울트라" --sort price_asc
 ```
 
 ### 다페이지 수집
 ```bash
-npx bunjang-cli search "갤럭시 s25 울트라" \
+npx @jinon86/bunjang-cli search "갤럭시 s25 울트라" \
   --start-page 1 \
   --pages 30 \
   --max-items 300 \
@@ -76,7 +76,7 @@ npx bunjang-cli search "갤럭시 s25 울트라" \
 
 ### AI 분석용 TOON chunk 저장
 ```bash
-npx bunjang-cli search "갤럭시 s25 울트라" \
+npx @jinon86/bunjang-cli search "갤럭시 s25 울트라" \
   --start-page 1 \
   --pages 30 \
   --max-items 300 \
@@ -93,28 +93,28 @@ npx bunjang-cli search "갤럭시 s25 울트라" \
 
 ### 상품 상세
 ```bash
-npx bunjang-cli item get 396049093
-npx bunjang-cli --json item list --ids 396049093,395641230,394447826
+npx @jinon86/bunjang-cli item get 396049093
+npx @jinon86/bunjang-cli --json item list --ids 396049093,395641230,394447826
 ```
 
 ### 찜
 ```bash
-npx bunjang-cli favorite add 396049093
-npx bunjang-cli favorite remove 396049093
-npx bunjang-cli --json favorite list
+npx @jinon86/bunjang-cli favorite add 396049093
+npx @jinon86/bunjang-cli favorite remove 396049093
+npx @jinon86/bunjang-cli --json favorite list
 ```
 
 ### 채팅
 ```bash
-npx bunjang-cli --json chat list
-npx bunjang-cli --json chat start 396049093 --message "안녕하세요"
-npx bunjang-cli --json chat send 84191651 --message "상품 상태 괜찮을까요?"
+npx @jinon86/bunjang-cli --json chat list
+npx @jinon86/bunjang-cli --json chat start 396049093 --message "안녕하세요"
+npx @jinon86/bunjang-cli --json chat send 84191651 --message "상품 상태 괜찮을까요?"
 ```
 
 ### 구매 흐름 확인
 ```bash
-npx bunjang-cli --json purchase prepare 396049093
-npx bunjang-cli --json purchase start 396049093
+npx @jinon86/bunjang-cli --json purchase prepare 396049093
+npx @jinon86/bunjang-cli --json purchase start 396049093
 ```
 
 
@@ -128,7 +128,7 @@ npx bunjang-cli --json purchase start 396049093
 
 ### 예시 흐름
 ```bash
-npx bunjang-cli search "갤럭시 s24 울트라" \
+npx @jinon86/bunjang-cli search "갤럭시 s24 울트라" \
   --sort date \
   --start-page 1 \
   --pages 30 \
@@ -159,10 +159,10 @@ npx bunjang-cli search "갤럭시 s24 울트라" \
 6. `chat start` 또는 `chat send`로 판매자 문의
 
 ## 검증용 추천 흐름
-1. `npx bunjang-cli --json auth status`
-2. `npx bunjang-cli --json search "<검색어>" --max-items 5`
-3. 검색 결과에서 `id` 하나를 골라 `npx bunjang-cli --json item get <id>`
-4. `npx bunjang-cli --json favorite list`
+1. `npx @jinon86/bunjang-cli --json auth status`
+2. `npx @jinon86/bunjang-cli --json search "<검색어>" --max-items 5`
+3. 검색 결과에서 `id` 하나를 골라 `npx @jinon86/bunjang-cli --json item get <id>`
+4. `npx @jinon86/bunjang-cli --json favorite list`
 5. 같은 `id`에 대해 `favorite add` / `favorite remove`를 왕복 실행
 6. 결과 JSON에서 `transportUsed`, 핵심 필드, before/after 변화를 확인
 7. 다페이지 export 검증 시 `sourcePage`가 여러 페이지에 걸쳐 섞여 있는지 확인

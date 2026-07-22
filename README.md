@@ -32,7 +32,7 @@
 
 기본 실행 형식은 아래와 같습니다.
 ```bash
-npx bunjang-cli --help
+npx @jinon86/bunjang-cli --help
 ```
 
 ---
@@ -42,7 +42,7 @@ npx bunjang-cli --help
 최초 로그인은 headful 브라우저 창을 띄워 직접 진행합니다.
 
 ```bash
-npx bunjang-cli auth login
+npx @jinon86/bunjang-cli auth login
 ```
 
 `auth login`은 **TTY가 붙은 interactive 터미널**에서 실행해야 하며, 브라우저에서 로그인한 뒤 **터미널로 돌아와 Enter를 눌러야** 완료됩니다.  
@@ -50,19 +50,19 @@ npx bunjang-cli auth login
 
 JSON 출력:
 ```bash
-npx bunjang-cli --json auth login
+npx @jinon86/bunjang-cli --json auth login
 ```
 
 로그인 상태 확인:
 ```bash
-npx bunjang-cli auth status
-npx bunjang-cli --json auth status
+npx @jinon86/bunjang-cli auth status
+npx @jinon86/bunjang-cli --json auth status
 ```
 
 로컬 CLI 세션/브라우저 프로필 초기화(로그아웃):
 ```bash
-npx bunjang-cli auth logout
-npx bunjang-cli --json auth logout
+npx @jinon86/bunjang-cli auth logout
+npx @jinon86/bunjang-cli --json auth logout
 ```
 
 세션은 기본적으로 아래 경로에 저장됩니다.
@@ -72,7 +72,7 @@ npx bunjang-cli --json auth logout
 
 다른 경로를 쓰고 싶다면:
 ```bash
-BUNJANG_CONFIG_DIR=/custom/path npx bunjang-cli auth status
+BUNJANG_CONFIG_DIR=/custom/path npx @jinon86/bunjang-cli auth status
 ```
 
 ### 헤드리스 서버(디스플레이 없는 SSH-only VPS 등)에서 로그인하기
@@ -88,8 +88,8 @@ BUNJANG_CONFIG_DIR=/custom/path npx bunjang-cli auth status
 
 **1. 화면이 있는 머신에서 로그인 후 세션 내보내기**
 ```bash
-npx bunjang-cli auth login
-npx bunjang-cli auth export ./bunjang-session
+npx @jinon86/bunjang-cli auth login
+npx @jinon86/bunjang-cli auth export ./bunjang-session
 ```
 
 **2. 내보낸 디렉토리를 헤드리스 서버로 복사** (보안 채널만 사용 — scp/rsync over SSH)
@@ -99,8 +99,8 @@ scp -r ./bunjang-session user@headless-server:/tmp/bunjang-session
 
 **3. 헤드리스 서버에서 가져오기**
 ```bash
-npx bunjang-cli auth import /tmp/bunjang-session
-npx bunjang-cli auth status   # authenticated: true 확인
+npx @jinon86/bunjang-cli auth import /tmp/bunjang-session
+npx @jinon86/bunjang-cli auth status   # authenticated: true 확인
 ```
 
 `auth import`는 기존 세션이 있으면 지우지 않고 `<config-dir>.bak-<timestamp>`로 백업한 뒤 덮어씁니다. 대상 디렉토리가 `session.json`/`browser-profile`을 갖춘 export 결과가 아니면 가져오기를 거부하고, 자기 자신의 세션 디렉토리를 스스로 import하는 것도 거부합니다.
@@ -113,7 +113,7 @@ npx bunjang-cli auth status   # authenticated: true 확인
 
 ```bash
 # --force로 내보내기 대상 디렉토리를 덮어쓸 수 있습니다
-npx bunjang-cli auth export ./bunjang-session --force
+npx @jinon86/bunjang-cli auth export ./bunjang-session --force
 ```
 
 ---
@@ -121,7 +121,7 @@ npx bunjang-cli auth export ./bunjang-session --force
 ## 기본 사용법
 
 ```bash
-npx bunjang-cli [전역옵션] <명령어>
+npx @jinon86/bunjang-cli [전역옵션] <명령어>
 ```
 
 ### 전역 옵션
@@ -131,7 +131,7 @@ npx bunjang-cli [전역옵션] <명령어>
 
 예시:
 ```bash
-npx bunjang-cli --json --preferred-transport browser search "갤럭시 s25 울트라"
+npx @jinon86/bunjang-cli --json --preferred-transport browser search "갤럭시 s25 울트라"
 ```
 
 ---
@@ -140,23 +140,23 @@ npx bunjang-cli --json --preferred-transport browser search "갤럭시 s25 울�
 
 ### 기본 검색
 ```bash
-npx bunjang-cli search "갤럭시 s25 울트라"
-npx bunjang-cli --json search "갤럭시 s25 울트라"
+npx @jinon86/bunjang-cli search "갤럭시 s25 울트라"
+npx @jinon86/bunjang-cli --json search "갤럭시 s25 울트라"
 ```
 
 ### 가격 필터
 ```bash
-npx bunjang-cli search "갤럭시 s25 울트라" \
+npx @jinon86/bunjang-cli search "갤럭시 s25 울트라" \
   --price-min 900000 \
   --price-max 1100000
 ```
 
 ### 정렬
 ```bash
-npx bunjang-cli search "갤럭시 s25 울트라" --sort score
-npx bunjang-cli search "갤럭시 s25 울트라" --sort date
-npx bunjang-cli search "갤럭시 s25 울트라" --sort price_asc
-npx bunjang-cli search "갤럭시 s25 울트라" --sort price_desc
+npx @jinon86/bunjang-cli search "갤럭시 s25 울트라" --sort score
+npx @jinon86/bunjang-cli search "갤럭시 s25 울트라" --sort date
+npx @jinon86/bunjang-cli search "갤럭시 s25 울트라" --sort price_asc
+npx @jinon86/bunjang-cli search "갤럭시 s25 울트라" --sort price_desc
 ```
 
 ### 다페이지 수집
@@ -166,7 +166,7 @@ npx bunjang-cli search "갤럭시 s25 울트라" --sort price_desc
 
 예시:
 ```bash
-npx bunjang-cli search "25 울트라 미개봉" \
+npx @jinon86/bunjang-cli search "25 울트라 미개봉" \
   --start-page 1 \
   --pages 10 \
   --max-items 300 \
@@ -179,14 +179,14 @@ npx bunjang-cli search "25 울트라 미개봉" \
 
 ### 단일 상품 상세
 ```bash
-npx bunjang-cli item get 396049093
-npx bunjang-cli --json item get 396049093
+npx @jinon86/bunjang-cli item get 396049093
+npx @jinon86/bunjang-cli --json item get 396049093
 ```
 
 ### 여러 상품 상세 일괄 조회
 ```bash
-npx bunjang-cli item list --ids 396049093,395641230,394447826
-npx bunjang-cli --json item list --ids 396049093,395641230,394447826
+npx @jinon86/bunjang-cli item list --ids 396049093,395641230,394447826
+npx @jinon86/bunjang-cli --json item list --ids 396049093,395641230,394447826
 ```
 
 가져오는 정보:
@@ -207,7 +207,7 @@ npx bunjang-cli --json item list --ids 396049093,395641230,394447826
 
 ### 목록만 저장
 ```bash
-npx bunjang-cli search "갤럭시 s25 울트라" \
+npx @jinon86/bunjang-cli search "갤럭시 s25 울트라" \
   --start-page 1 \
   --pages 30 \
   --max-items 300 \
@@ -216,7 +216,7 @@ npx bunjang-cli search "갤럭시 s25 울트라" \
 
 ### 모든 상품의 본문까지 포함해 저장
 ```bash
-npx bunjang-cli search "갤럭시 s25 울트라" \
+npx @jinon86/bunjang-cli search "갤럭시 s25 울트라" \
   --start-page 1 \
   --pages 30 \
   --max-items 300 \
@@ -244,7 +244,7 @@ npx bunjang-cli search "갤럭시 s25 울트라" \
 - 검색 결과는 **listing id 기준으로 dedupe** 되어 chunk 파일 전체에서 중복 id가 없도록 유지합니다.
 
 ```bash
-npx bunjang-cli search "갤럭시 s25 울트라" \
+npx @jinon86/bunjang-cli search "갤럭시 s25 울트라" \
   --start-page 1 \
   --pages 30 \
   --max-items 300 \
@@ -265,20 +265,20 @@ sourcePage,id,title,url,price,currency,imageUrl,description,status,shippingFee,d
 
 ### 찜 추가
 ```bash
-npx bunjang-cli favorite add 396049093
-npx bunjang-cli --json favorite add 396049093
+npx @jinon86/bunjang-cli favorite add 396049093
+npx @jinon86/bunjang-cli --json favorite add 396049093
 ```
 
 ### 찜 제거
 ```bash
-npx bunjang-cli favorite remove 396049093
-npx bunjang-cli --json favorite remove 396049093
+npx @jinon86/bunjang-cli favorite remove 396049093
+npx @jinon86/bunjang-cli --json favorite remove 396049093
 ```
 
 ### 찜 목록 보기
 ```bash
-npx bunjang-cli favorite list
-npx bunjang-cli --json favorite list
+npx @jinon86/bunjang-cli favorite list
+npx @jinon86/bunjang-cli --json favorite list
 ```
 
 ---
@@ -287,26 +287,26 @@ npx bunjang-cli --json favorite list
 
 ### 채팅 목록 보기
 ```bash
-npx bunjang-cli chat list
-npx bunjang-cli --json chat list
+npx @jinon86/bunjang-cli chat list
+npx @jinon86/bunjang-cli --json chat list
 ```
 
 ### 상품 페이지에서 판매자와 새 채팅 시작
 ```bash
-npx bunjang-cli chat start 396049093 --message "안녕하세요"
-npx bunjang-cli --json chat start 396049093 --message "안녕하세요"
+npx @jinon86/bunjang-cli chat start 396049093 --message "안녕하세요"
+npx @jinon86/bunjang-cli --json chat start 396049093 --message "안녕하세요"
 ```
 
 ### 기존 채팅방 읽기
 ```bash
-npx bunjang-cli chat read 84191651
-npx bunjang-cli --json chat read 84191651
+npx @jinon86/bunjang-cli chat read 84191651
+npx @jinon86/bunjang-cli --json chat read 84191651
 ```
 
 ### 기존 채팅방에 메시지 보내기
 ```bash
-npx bunjang-cli chat send 84191651 --message "상품 상태 괜찮을까요?"
-npx bunjang-cli --json chat send 84191651 --message "상품 상태 괜찮을까요?"
+npx @jinon86/bunjang-cli chat send 84191651 --message "상품 상태 괜찮을까요?"
+npx @jinon86/bunjang-cli --json chat send 84191651 --message "상품 상태 괜찮을까요?"
 ```
 
 ---
@@ -315,14 +315,14 @@ npx bunjang-cli --json chat send 84191651 --message "상품 상태 괜찮을까�
 
 ### 구매 가능 상태 확인
 ```bash
-npx bunjang-cli purchase prepare 396049093
-npx bunjang-cli --json purchase prepare 396049093
+npx @jinon86/bunjang-cli purchase prepare 396049093
+npx @jinon86/bunjang-cli --json purchase prepare 396049093
 ```
 
 ### 구매 흐름 시작
 ```bash
-npx bunjang-cli purchase start 396049093
-npx bunjang-cli --json purchase start 396049093
+npx @jinon86/bunjang-cli purchase start 396049093
+npx @jinon86/bunjang-cli --json purchase start 396049093
 ```
 
 주의:
@@ -334,7 +334,7 @@ npx bunjang-cli --json purchase start 396049093
 ## AI 에이전트용 랭킹
 
 ```bash
-npx bunjang-cli agent-search-rank "갤럭시 s25 울트라" \
+npx @jinon86/bunjang-cli agent-search-rank "갤럭시 s25 울트라" \
   --price-min 900000 \
   --price-max 1100000 \
   --max-items 20 \
@@ -343,7 +343,7 @@ npx bunjang-cli agent-search-rank "갤럭시 s25 울트라" \
 
 JSON:
 ```bash
-npx bunjang-cli --json agent-search-rank "갤럭시 s25 울트라" \
+npx @jinon86/bunjang-cli --json agent-search-rank "갤럭시 s25 울트라" \
   --price-min 900000 \
   --price-max 1100000 \
   --max-items 20
@@ -362,7 +362,7 @@ npx bunjang-cli --json agent-search-rank "갤럭시 s25 울트라" \
 
 ### 1. S25 울트라 300개 수집 + 본문 저장
 ```bash
-npx bunjang-cli search "갤럭시 s25 울트라" \
+npx @jinon86/bunjang-cli search "갤럭시 s25 울트라" \
   --start-page 1 \
   --pages 30 \
   --max-items 300 \
@@ -373,7 +373,7 @@ npx bunjang-cli search "갤럭시 s25 울트라" \
 
 ### 2. S24 울트라 가격 낮은순 수집
 ```bash
-npx bunjang-cli search "갤럭시 s24 울트라" \
+npx @jinon86/bunjang-cli search "갤럭시 s24 울트라" \
   --sort price_asc \
   --start-page 1 \
   --pages 20 \
@@ -384,8 +384,8 @@ npx bunjang-cli search "갤럭시 s24 울트라" \
 
 ### 3. 특정 상품 찜 후 판매자에게 첫 메시지 보내기
 ```bash
-npx bunjang-cli favorite add 396049093
-npx bunjang-cli chat start 396049093 --message "안녕하세요"
+npx @jinon86/bunjang-cli favorite add 396049093
+npx @jinon86/bunjang-cli chat start 396049093 --message "안녕하세요"
 ```
 
 ---

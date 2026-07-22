@@ -1,17 +1,17 @@
 {
-  "name": "bunjang-cli",
-  "version": "0.1.2",
+  "name": "@jinon86/bunjang-cli",
+  "version": "0.2.0",
   "description": "CLI-first Bunjang client for humans and AI agents",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@10.32.1",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/pinion05/bunjangcli.git"
+    "url": "git+https://github.com/jinwon-int/bunjangcli.git"
   },
-  "homepage": "https://github.com/pinion05/bunjangcli#readme",
+  "homepage": "https://github.com/jinwon-int/bunjangcli#readme",
   "bugs": {
-    "url": "https://github.com/pinion05/bunjangcli/issues"
+    "url": "https://github.com/jinwon-int/bunjangcli/issues"
   },
   "keywords": [
     "bunjang",
