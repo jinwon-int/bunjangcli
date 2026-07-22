@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -36,5 +36,53 @@ describe('session metadata guardrails', () => {
     expect(result.status.profileExists).toBe(false);
     expect(result.status.lastLoginAt).toBeNull();
     expect(result.status.detectedBy).toBe('missing-session-metadata');
+  });
+
+  it('exports a session then imports it on another store, reporting live status via the router', async () => {
+    const sourceRoot = mkdtempSync(join(tmpdir(), 'bunjang-session-src-'));
+    const sourceStore = new SessionStore(sourceRoot);
+    sourceStore.ensure();
+    sourceStore.saveMetadata({ lastLoginAt: '2026-01-01T00:00:00.000Z', lastTransport: 'browser' });
+    writeFileSync(join(sourceStore.userDataDir, 'Cookies'), 'cookie-data', 'utf8');
+
+    const router = new CapabilityRouter(
+      new FakeTransport('browser', ['auth']),
+      new FakeTransport('api', []),
+      { preferredTransport: 'browser' },
+    );
+    const sourceService = new SessionService(router, sourceStore);
+
+    const exportDest = join(mkdtempSync(join(tmpdir(), 'bunjang-session-export-')), 'session-copy');
+    const exportResult = await sourceService.exportSession(exportDest);
+    expect(exportResult.exportedTo).toBe(exportDest);
+    expect(exportResult.warning).toMatch(/treat it like a password/i);
+    expect(existsSync(join(exportDest, 'session.json'))).toBe(true);
+
+    const targetRoot = join(mkdtempSync(join(tmpdir(), 'bunjang-session-target-')), 'fresh');
+    const targetStore = new SessionStore(targetRoot);
+    const targetService = new SessionService(router, targetStore);
+
+    const importResult = await targetService.importSession(exportDest);
+
+    expect(importResult.backedUpTo).toBeNull();
+    expect(importResult.transportUsed).toBe('browser');
+    // FakeTransport reports its fixed status regardless of on-disk state; this asserts
+    // that importSession actually calls through the router rather than short-circuiting.
+    expect(importResult.status.authenticated).toBe(true);
+    expect(targetStore.readMetadata().lastLoginAt).toBe('2026-01-01T00:00:00.000Z');
+  });
+
+  it('rejects exporting when there is nothing to export, and importing a bogus path', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'bunjang-session-empty-'));
+    const store = new SessionStore(root);
+    const router = new CapabilityRouter(
+      new FakeTransport('browser', ['auth']),
+      new FakeTransport('api', []),
+      { preferredTransport: 'browser' },
+    );
+    const service = new SessionService(router, store);
+
+    await expect(service.exportSession(join(root, 'dest'))).rejects.toThrow(/no local session/i);
+    await expect(service.importSession(join(root, 'does-not-exist'))).rejects.toThrow(/does not exist/i);
   });
 });

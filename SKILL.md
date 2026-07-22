@@ -20,6 +20,7 @@ description: 번개장터를 CLI로 검색, 상세조회, 찜, 채팅, 대량수
 ## 실행 원칙
 - README 예시와 동일하게 **항상 `npx bunjang-cli ...` 형식**으로 실행한다.
 - `auth login`은 headful 브라우저를 띄운 뒤 **현재 터미널이 TTY 상태여야 하고, 로그인 완료 후 터미널에서 Enter를 눌러야** 끝난다. 비-TTY 실행에서는 로그인 브라우저만 뜨고 완료 처리가 멈출 수 있으므로 interactive/TTY 세션으로 실행한다.
+- **디스플레이가 없는 헤드리스 노드(SSH-only VPS 등)에서 에이전트가 직접 `auth login`을 실행할 수는 없다.** 화면 있는 머신에서 로그인 후 `auth export <dir>`로 세션을 내보내고, 보안 채널(scp/rsync over SSH)로 헤드리스 노드에 옮긴 뒤 `auth import <dir>`로 가져오게 한다. 자세한 절차는 README의 "헤드리스 서버에서 로그인하기" 참고. 내보낸 디렉토리는 로그인 쿠키를 담고 있으므로 비밀번호처럼 취급하고 안전한 채널로만 옮긴다.
 - 검색 노이즈(광고, 타모델, 액세서리)가 섞일 수 있음을 전제하고, 필요하면 후처리로 정제한다.
 - 대량 수집 시에는 `--start-page`, `--pages`, `--max-items`, `--with-detail`, `--output`을 우선 활용한다.
 - AI 분석용으로 나눠 저장해야 하면 `--ai --output <directory>`를 사용해 `items-<n>.toon` chunk를 만든다.
@@ -45,10 +46,15 @@ description: 번개장터를 CLI로 검색, 상세조회, 찜, 채팅, 대량수
 npx bunjang-cli auth login
 npx bunjang-cli auth logout
 npx bunjang-cli --json auth status
+
+# 헤드리스 노드 전용: 화면 있는 머신에서 export → scp/rsync로 이전 → 헤드리스에서 import
+npx bunjang-cli auth export ./bunjang-session
+npx bunjang-cli auth import /path/to/bunjang-session
 ```
 
 - `auth login`은 브라우저에서 로그인 후 **터미널로 돌아와 Enter를 눌러야** 성공 처리된다.
 - 따라서 자동화 도중 로그인할 때는 **TTY가 붙은 interactive 세션**(예: agentty, 직접 터미널 실행)로 돌려야 한다.
+- 화면이 없는 노드에서는 `auth login`을 시도하지 말고 위 export/import 경로를 쓴다.
 
 ### 검색
 ```bash

@@ -75,6 +75,43 @@ npx bunjang-cli --json auth logout
 BUNJANG_CONFIG_DIR=/custom/path npx bunjang-cli auth status
 ```
 
+### 헤드리스 서버(디스플레이 없는 SSH-only VPS 등)에서 로그인하기
+
+`auth login`은 headful 브라우저 창 + 같은 TTY에서의 Enter 입력이 필요해서, 화면이 없는 서버에서는 그대로 실행할 수 없습니다.
+대신 화면이 있는 곳에서 로그인한 세션을 **내보내서(export) 헤드리스 서버로 옮긴 뒤 가져오면(import)** 됩니다.
+
+> 헤드리스 서버에도 Playwright의 **헤드리스** Chromium 실행 파일은 필요합니다(디스플레이는 필요 없습니다 — 실행 파일만 있으면 됨).
+> 처음 한 번만 받으면 됩니다:
+> ```bash
+> npx playwright install chromium-headless-shell
+> ```
+
+**1. 화면이 있는 머신에서 로그인 후 세션 내보내기**
+```bash
+npx bunjang-cli auth login
+npx bunjang-cli auth export ./bunjang-session
+```
+
+**2. 내보낸 디렉토리를 헤드리스 서버로 복사** (보안 채널만 사용 — scp/rsync over SSH)
+```bash
+scp -r ./bunjang-session user@headless-server:/tmp/bunjang-session
+```
+
+**3. 헤드리스 서버에서 가져오기**
+```bash
+npx bunjang-cli auth import /tmp/bunjang-session
+npx bunjang-cli auth status   # authenticated: true 확인
+```
+
+`auth import`는 기존 세션이 있으면 지우지 않고 `<config-dir>.bak-<timestamp>`로 백업한 뒤 덮어씁니다. 대상 디렉토리가 `session.json`/`browser-profile`을 갖춘 export 결과가 아니면 가져오기를 거부합니다.
+
+⚠️ **내보낸 디렉토리는 로그인 쿠키/브라우저 프로필을 담고 있어 사실상 비밀번호와 같습니다.** 보안 채널(scp/rsync over SSH)로만 옮기고, git에 커밋하거나 내용을 다른 곳에 붙여넣지 마세요. 옮긴 뒤에는 남은 사본을 지우는 게 안전합니다. 기존 워크어라운드(`~/.config/bunjang-cli/` 폴더를 통째로 수동 복사)는 계속 동작하지만, `export`/`import`가 유효성 검증·백업·권한 고정(0700/0600)까지 해주는 정식 경로입니다.
+
+```bash
+# --force로 내보내기 대상 디렉토리를 덮어쓸 수 있습니다
+npx bunjang-cli auth export ./bunjang-session --force
+```
+
 ---
 
 ## 기본 사용법
