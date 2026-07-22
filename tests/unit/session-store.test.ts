@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -113,5 +113,57 @@ describe('SessionStore', () => {
 
     expect(backedUpTo).toBeNull();
     expect(targetStore.readMetadata().lastLoginAt).toBe('2026-01-01T00:00:00.000Z');
+  });
+
+  it('never follows a symlink inside the session directory when locking down permissions', () => {
+    const { store } = makeLoggedInStore();
+    const externalDir = mkdtempSync(join(tmpdir(), 'bunjang-cli-external-'));
+    const externalFile = join(externalDir, 'unrelated.txt');
+    writeFileSync(externalFile, 'not part of the session', 'utf8');
+    chmodSync(externalDir, 0o755);
+    chmodSync(externalFile, 0o644);
+    symlinkSync(externalDir, join(store.userDataDir, 'escape-link'), 'dir');
+
+    const dest = join(mkdtempSync(join(tmpdir(), 'bunjang-cli-export-')), 'session-copy');
+    store.exportTo(dest);
+
+    expect(statSync(externalDir).mode & 0o777).toBe(0o755);
+    expect(statSync(externalFile).mode & 0o777).toBe(0o644);
+  });
+
+  it('refuses to export into a destination path that already exists as a regular file', () => {
+    const { store } = makeLoggedInStore();
+    const parent = mkdtempSync(join(tmpdir(), 'bunjang-cli-export-'));
+    const destFile = join(parent, 'not-a-directory');
+    writeFileSync(destFile, 'x', 'utf8');
+
+    expect(() => store.exportTo(destFile)).toThrow(/already exists and is not a directory/i);
+    expect(() => store.exportTo(destFile, { force: true })).toThrow(/already exists and is not a directory/i);
+  });
+
+  it('--force replaces the destination outright instead of merging over stale contents', () => {
+    const { store: sourceA } = makeLoggedInStore();
+    const dest = join(mkdtempSync(join(tmpdir(), 'bunjang-cli-export-')), 'session-copy');
+    sourceA.exportTo(dest);
+    // Simulate a stale leftover file from a previous, unrelated export at the same path.
+    mkdirSync(join(dest, 'browser-profile'), { recursive: true });
+    writeFileSync(join(dest, 'browser-profile', 'old-stale-file.txt'), 'stale', 'utf8');
+    writeFileSync(join(dest, 'some-old-leftover.txt'), 'stale', 'utf8');
+
+    const { store: sourceB } = makeLoggedInStore();
+    sourceB.saveMetadata({ lastLoginAt: '2027-01-01T00:00:00.000Z', lastTransport: 'browser' });
+    sourceB.exportTo(dest, { force: true });
+
+    expect(existsSync(join(dest, 'browser-profile', 'old-stale-file.txt'))).toBe(false);
+    expect(existsSync(join(dest, 'some-old-leftover.txt'))).toBe(false);
+    expect(existsSync(join(dest, 'session.json'))).toBe(true);
+  });
+
+  it('refuses to import a store from its own session directory', () => {
+    const { store } = makeLoggedInStore();
+
+    expect(() => store.importFrom(store.rootDir)).toThrow(/nothing to import/i);
+    expect(existsSync(join(store.userDataDir, 'Cookies'))).toBe(true);
+    expect(store.readMetadata().lastLoginAt).toBe('2026-01-01T00:00:00.000Z');
   });
 });

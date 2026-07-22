@@ -66,6 +66,13 @@ export function registerAuth(program: Command): void {
       if (this.parent?.parent?.opts().json) printJson(result);
       else {
         if (result.backedUpTo) console.log(`Existing session backed up to ${result.backedUpTo}`);
+        console.log('Import complete.');
+        if (result.statusCheckError) {
+          console.warn(
+            `⚠️  Could not verify the session live (${result.statusCheckError}). ` +
+              'The import itself succeeded — run `auth status` once a browser is available to confirm login.',
+          );
+        }
         printSessionStatus(result.status);
       }
     });

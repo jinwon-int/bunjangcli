@@ -2,9 +2,11 @@ import {
   chmodSync,
   cpSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
   statSync,
@@ -21,28 +23,55 @@ export interface SessionMetadata {
 /** Files/dirs that identify a directory as a bunjang-cli session (export target). */
 const SESSION_MARKER_ENTRIES = ['session.json', 'browser-profile'] as const;
 
+interface EntryKind {
+  isDirectory: boolean;
+  isSymbolicLink: boolean;
+}
+
 /**
  * Best-effort recursive permission lockdown (0700 dirs / 0600 files). Mirrors the
  * best-effort chmod already used for session.json — never fatal on non-POSIX
- * filesystems (e.g. some Windows setups), since the session is unusable there anyway
- * without POSIX permission semantics.
+ * filesystems (e.g. some Windows setups), or if a directory becomes unreadable mid-walk,
+ * since the actual data copy (cpSync) has already completed by the time this runs.
+ *
+ * Never follows symlinks: `fs.cpSync` preserves symlinks as symlinks rather than
+ * dereferencing them, so a session directory can legitimately contain one (e.g. a stale
+ * Chromium lock file). Following it here would chmod/recurse into whatever it points at,
+ * which may be outside the session directory entirely.
  */
 function hardenPermissionsRecursive(rootPath: string): void {
   let stat;
   try {
-    stat = statSync(rootPath);
+    stat = lstatSync(rootPath);
   } catch {
     return;
   }
+  hardenEntry(rootPath, { isDirectory: stat.isDirectory(), isSymbolicLink: stat.isSymbolicLink() });
+}
+
+function hardenEntry(entryPath: string, kind: EntryKind): void {
+  if (kind.isSymbolicLink) return;
+
   try {
-    chmodSync(rootPath, stat.isDirectory() ? 0o700 : 0o600);
+    chmodSync(entryPath, kind.isDirectory ? 0o700 : 0o600);
   } catch {
     // best effort on non-POSIX environments
   }
-  if (stat.isDirectory()) {
-    for (const entry of readdirSync(rootPath)) {
-      hardenPermissionsRecursive(join(rootPath, entry));
-    }
+  if (!kind.isDirectory) return;
+
+  let entries;
+  try {
+    // withFileTypes avoids an extra lstat/stat syscall per child — readdir already knows
+    // whether each entry is a directory/symlink.
+    entries = readdirSync(entryPath, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    hardenEntry(join(entryPath, entry.name), {
+      isDirectory: entry.isDirectory(),
+      isSymbolicLink: entry.isSymbolicLink(),
+    });
   }
 }
 
@@ -106,8 +135,19 @@ export class SessionStore {
         'No local session found to export. Run `auth login` on a machine with a display first, then export from there.',
       );
     }
-    if (existsSync(destPath) && readdirSync(destPath).length > 0 && !opts.force) {
-      throw new Error(`Destination "${destPath}" already exists and is not empty. Pass --force to overwrite it.`);
+    if (existsSync(destPath)) {
+      if (!statSync(destPath).isDirectory()) {
+        throw new Error(`Destination "${destPath}" already exists and is not a directory.`);
+      }
+      if (readdirSync(destPath).length > 0) {
+        if (!opts.force) {
+          throw new Error(`Destination "${destPath}" already exists and is not empty. Pass --force to overwrite it.`);
+        }
+        // --force replaces the destination outright. fs.cpSync merges into an existing
+        // directory rather than mirroring it, so without clearing first, stale files from
+        // an older export at the same path would survive alongside the fresh one.
+        rmSync(destPath, { recursive: true, force: true });
+      }
     }
     mkdirSync(destPath, { recursive: true });
     cpSync(this.rootDir, destPath, { recursive: true });
@@ -123,6 +163,13 @@ export class SessionStore {
   importFrom(srcPath: string): { backedUpTo: string | null } {
     if (!existsSync(srcPath)) {
       throw new Error(`Source path "${srcPath}" does not exist.`);
+    }
+    if (existsSync(this.rootDir) && realpathSync(this.rootDir) === realpathSync(srcPath)) {
+      throw new Error(
+        `Source path "${srcPath}" is this store's own session directory — there is nothing to import ` +
+          '(it would have to move itself aside before copying from itself). Export to a different path first ' +
+          'if you meant to make a portable copy.',
+      );
     }
     if (!this.looksLikeExportedSession(srcPath)) {
       throw new Error(

@@ -143,6 +143,12 @@ export class BrowserClient implements BunjangTransport {
       headless: false,
       viewport: { width: 430, height: 932 },
       locale: 'ko-KR',
+      // Force Chromium's portable cookie-encryption backend instead of an OS keyring
+      // (gnome-keyring/kwallet/macOS Keychain). Without this, a profile logged in on a
+      // machine with a keyring can have its cookies silently fail to decrypt after being
+      // copied to a different machine via `auth export`/`auth import` (e.g. a headless
+      // server with no keyring service) — the profile looks intact but reports logged out.
+      args: ['--password-store=basic'],
     });
     const page = context.pages()[0] ?? (await context.newPage());
     await page.goto('https://m.bunjang.co.kr/login', { waitUntil: 'domcontentloaded' });
@@ -176,6 +182,7 @@ export class BrowserClient implements BunjangTransport {
       headless: true,
       viewport: { width: 430, height: 932 },
       locale: 'ko-KR',
+      args: ['--password-store=basic'],
     });
     const page = context.pages()[0] ?? (await context.newPage());
     await page.goto('https://m.bunjang.co.kr/', { waitUntil: 'domcontentloaded' });
@@ -467,6 +474,7 @@ export class BrowserClient implements BunjangTransport {
       headless: true,
       viewport: { width: 430, height: 932 },
       locale: 'ko-KR',
+      args: ['--password-store=basic'],
     });
     try {
       const page = context.pages()[0] ?? (await context.newPage());
