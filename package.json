@@ -1,6 +1,6 @@
 {
   "name": "@jinon86/bunjang-cli",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "CLI-first Bunjang client for humans and AI agents",
   "license": "MIT",
   "type": "module",
