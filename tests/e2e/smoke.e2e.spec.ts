@@ -58,7 +58,37 @@ describe.skipIf(!hasAuthenticatedOptIn)('authenticated Bunjang smoke', () => {
     const payload = JSON.parse(stdout) as { threads: unknown[] } | { error: string };
     expect('threads' in payload).toBe(true);
   });
+
+  // Regression coverage for the 2026-07 Bunjang mobile-web redesign: the favorite
+  // ("bookmark") button's class was renamed and an app-install bottom-sheet nudge began
+  // intercepting clicks on it. Round-trips add -> remove on a long-lived public listing
+  // and asserts against the listing's real favoriteCount (fetched fresh via the
+  // read-only `item get` path) rather than trusting the mutating command's own report,
+  // so it fails closed if the click silently lands on the wrong element again.
+  it('adds then removes a favorite, verified via a fresh item lookup', { timeout: 60000 }, async () => {
+    const listingId = '394694708';
+    const countBefore = await fetchFavoriteCount(listingId);
+
+    const addResult = await execFileAsync('node', ['dist/src/cli.js', '--json', 'favorite', 'add', listingId]);
+    const addPayload = JSON.parse(addResult.stdout) as { item: { raw?: { favoritedAfter?: boolean | null } } };
+    expect(addPayload.item.raw?.favoritedAfter).not.toBe(false);
+    expect(await fetchFavoriteCount(listingId)).toBe(countBefore + 1);
+
+    const removeResult = await execFileAsync('node', ['dist/src/cli.js', '--json', 'favorite', 'remove', listingId]);
+    const removePayload = JSON.parse(removeResult.stdout) as { item: { raw?: { favoritedAfter?: boolean | null } } };
+    expect(removePayload.item.raw?.favoritedAfter).not.toBe(true);
+    expect(await fetchFavoriteCount(listingId)).toBe(countBefore);
+  });
 });
+
+async function fetchFavoriteCount(listingId: string): Promise<number> {
+  const { stdout } = await execFileAsync('node', ['dist/src/cli.js', '--json', 'item', 'get', listingId]);
+  const payload = JSON.parse(stdout) as { item: { favoriteCount: number | null } };
+  if (typeof payload.item.favoriteCount !== 'number') {
+    throw new Error(`Expected a numeric favoriteCount for ${listingId}, got ${JSON.stringify(payload.item.favoriteCount)}`);
+  }
+  return payload.item.favoriteCount;
+}
 
 describe.skipIf(!hasInteractiveLoginOptIn)('interactive login / reauth smoke', () => {
   it('supports a manual auth bootstrap run', async () => {
