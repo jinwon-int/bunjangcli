@@ -1,4 +1,4 @@
-import { chromium, type Page } from 'playwright';
+import { chromium, type Locator, type Page } from 'playwright';
 import { SessionStore } from '../../config/session-store.js';
 import {
   type ChatThread,
@@ -391,19 +391,26 @@ export class BrowserClient implements BunjangTransport {
       await this.gotoAuthenticated(page, listingActionUrl(listingId));
       const locator = await this.findFavoriteButton(page, labels);
       const favoriteTextBefore = await locator.textContent().catch(() => null);
+      const favoritedBefore = await this.isFavoriteButtonActive(locator);
       await locator.click();
       await this.softSettle(page);
       let favoriteTextAfter = await locator.textContent().catch(() => null);
+      let favoritedAfter = await this.isFavoriteButtonActive(locator);
       const beforeCount = this.parseFavoriteCount(favoriteTextBefore);
       const afterCount = this.parseFavoriteCount(favoriteTextAfter);
-      const needsSecondToggle =
+      const needsSecondToggleByCount =
         beforeCount !== null &&
         afterCount !== null &&
         ((shouldBeFavorited && afterCount < beforeCount) || (!shouldBeFavorited && afterCount > beforeCount));
-      if (needsSecondToggle) {
+      // The current icon-only bookmark button carries no visible text/count, so
+      // needsSecondToggleByCount is always false for it (both counts are null). Fall back
+      // to its filled/outline state, which we can read directly off the inner <svg fill>.
+      const needsSecondToggleByState = favoritedAfter !== null && favoritedAfter !== shouldBeFavorited;
+      if (needsSecondToggleByCount || needsSecondToggleByState) {
         await locator.click();
         await this.softSettle(page);
         favoriteTextAfter = await locator.textContent().catch(() => null);
+        favoritedAfter = await this.isFavoriteButtonActive(locator);
       }
       const detail = await this.getItem(listingId);
       return {
@@ -412,9 +419,23 @@ export class BrowserClient implements BunjangTransport {
           ...(detail.raw ?? {}),
           favoriteTextBefore,
           favoriteTextAfter,
+          favoritedBefore,
+          favoritedAfter,
         },
       };
     });
+  }
+
+  /**
+   * Reads favorited/not-favorited state directly off the bookmark button's inner `<svg
+   * fill="...">` (empty/"none" = outline/not-favorited, a set color = filled/favorited).
+   * Returns null when there's no inspectable svg, so callers can fall back to other
+   * signals (e.g. visible text/count) instead of treating "unknown" as "not favorited".
+   */
+  private async isFavoriteButtonActive(locator: Locator): Promise<boolean | null> {
+    const fill = await locator.locator('svg').first().getAttribute('fill').catch(() => null);
+    if (fill === null) return null;
+    return fill !== '' && fill.toLowerCase() !== 'none';
   }
 
   private matchesFilters(price: number | null, filters: SearchFilters): boolean {
@@ -505,9 +526,30 @@ export class BrowserClient implements BunjangTransport {
   private async gotoAuthenticated(page: Page, url: string): Promise<void> {
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     await this.softSettle(page);
+    await this.dismissAppNudge(page);
     const verification = await this.detectSession(page);
     if (!verification.authenticated) {
       throw new AuthRequiredError(`Authentication required after navigating to ${url} (${verification.detectedBy}).`);
+    }
+  }
+
+  /**
+   * Bunjang shows a mobile-web page a "번개장터 앱으로 시작하기 / 괜찮아요, 모바일 웹에서 볼게요"
+   * bottom-sheet nudge to install the app. It sits in a `bun-ui-portal` overlay with a dim
+   * backdrop that intercepts clicks on anything underneath it (the favorite/bookmark
+   * button, nav links, etc.) until dismissed. Every authenticated navigation goes through
+   * `gotoAuthenticated`, so dismissing it here covers favorite/nav/purchase flows in one
+   * place rather than repeating this in each caller.
+   */
+  private async dismissAppNudge(page: Page): Promise<void> {
+    const dismiss = page.getByText('괜찮아요, 모바일 웹에서 볼게요').first();
+    if (await dismiss.isVisible().catch(() => false)) {
+      await dismiss.click({ force: true }).catch(() => {
+        // best effort — if the nudge closes on its own or the click misses, callers still
+        // proceed and may hit their own timeout/selector errors, which is no worse than
+        // today's behavior without this dismissal.
+      });
+      await page.waitForTimeout(300);
     }
   }
 
@@ -641,6 +683,13 @@ export class BrowserClient implements BunjangTransport {
 
   private async findFavoriteButton(page: Page, labels: string[]) {
     const locators = [
+      // Current site build (2026-07 redesign): CSS-module class like
+      // `_bookmarkButton_8y4nl_19`, an icon-only button with no visible text, fixed to
+      // the bottom action bar. `[class*="..." i]` is a case-insensitive CSS attribute
+      // match, since the exact casing isn't a stable contract either.
+      page.locator('button[class*="bookmarkButton" i]').first(),
+      // Older build: a class literally containing "FavoriteButton". Kept as a fallback
+      // in case a future redesign reverts naming or an intermediate build differs.
       page.locator('button[class*="FavoriteButton"]').first(),
       page.locator('button').filter({ hasText: new RegExp(labels.join('|')) }).first(),
     ];
