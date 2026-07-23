@@ -12,7 +12,7 @@ import {
 import type { BunjangTransport, Capability } from '../../domain/transport.js';
 import { prompt } from '../../utils/cli-io.js';
 import { parsePrice } from '../../utils/text.js';
-import { listingActionUrl, listingUrl, searchPageUrl } from '../../utils/url.js';
+import { listingActionUrl, listingUrl, searchPageUrl, talkInboxUrl } from '../../utils/url.js';
 import { detectAuthenticatedSession } from './session-detection.js';
 
 interface BrowserClientOptions {
@@ -24,6 +24,20 @@ class AuthRequiredError extends Error {
     super(message);
     this.name = 'AuthRequiredError';
   }
+}
+
+// Bunjang's mobile-web (m.bunjang.co.kr) pages are served with different component
+// implementations depending on User-Agent sniffing: the default mobile UA renders an
+// icon-only, app-nudge-cluttered layout that has no chat entry point at all, while a
+// desktop UA on the same m.bunjang.co.kr URLs renders a fuller layout with a working
+// "번개톡 대화하기" chat button / talk inbox route. Chat flows (list/start/read/send) use
+// this UA (see `withPage`'s `desktop` option) so the talk.bunjang.co.kr iframe they depend
+// on actually loads. See GitHub issue jinwon-int/bunjangcli#4.
+const DESKTOP_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+
+interface WithPageOptions {
+  desktop?: boolean;
 }
 
 const SEARCH_CARD_EVAL = () => {
@@ -277,41 +291,61 @@ export class BrowserClient implements BunjangTransport {
   }
 
   async listChats(): Promise<ChatThread[]> {
-    return this.withPage(true, async (page) => {
-      await this.openTalkInbox(page);
-      return this.extractChatThreads(page);
-    });
+    return this.withPage(
+      true,
+      async (page) => {
+        await this.openTalkInbox(page);
+        return this.extractChatThreads(page);
+      },
+      { desktop: true },
+    );
   }
 
   async startChat(listingId: string, message: string): Promise<ChatThreadDetail> {
-    return this.withPage(true, async (page) => {
-      await this.gotoAuthenticated(page, listingActionUrl(listingId));
-      const contactButton = await this.findContactButton(page);
-      await contactButton.click({ force: true, timeout: 10000 });
-      await page.waitForTimeout(2500);
-      const frame = await this.getTalkFrame(page);
-      await this.dismissTalkNotices(frame);
-      const thread = await this.extractActiveThread(frame);
-      await this.sendMessageInFrame(frame, message);
-      return this.extractActiveThread(frame, message, thread);
-    });
+    return this.withPage(
+      true,
+      async (page) => {
+        // Navigating straight to `<listing>?talk=true` on a hard page load does NOT
+        // reliably open the talk iframe (confirmed by direct testing: the site only opens
+        // it in response to a client-side route transition, i.e. an actual click). So
+        // click the contact button instead of constructing that URL directly.
+        await this.gotoAuthenticated(page, listingActionUrl(listingId));
+        const contactButton = await this.findContactButton(page);
+        await contactButton.click({ force: true, timeout: 10000 });
+        await page.waitForTimeout(2500);
+        const frame = await this.getTalkFrame(page);
+        await this.dismissTalkNotices(frame);
+        const thread = await this.extractActiveThread(frame);
+        await this.sendMessageInFrame(frame, message);
+        return this.extractActiveThread(frame, message, thread);
+      },
+      { desktop: true },
+    );
   }
 
   async readChat(threadId: string): Promise<ChatThreadDetail> {
-    return this.withPage(true, async (page) => {
-      const frame = await this.openTalkInbox(page);
-      await this.selectThreadInFrame(frame, threadId);
-      return this.extractActiveThread(frame);
-    });
+    return this.withPage(
+      true,
+      async (page) => {
+        const frame = await this.openTalkInbox(page);
+        await this.selectThreadInFrame(frame, threadId);
+        return this.extractActiveThread(frame);
+      },
+      { desktop: true },
+    );
   }
 
   async sendChat(threadId: string, message: string): Promise<ChatThreadDetail> {
-    return this.withPage(true, async (page) => {
-      const frame = await this.openTalkInbox(page);
-      await this.selectThreadInFrame(frame, threadId);
-      await this.sendMessageInFrame(frame, message);
-      return this.extractActiveThread(frame, message);
-    });
+    return this.withPage(
+      true,
+      async (page) => {
+        const frame = await this.openTalkInbox(page);
+        await this.selectThreadInFrame(frame, threadId);
+        await this.sendMessageInFrame(frame, message);
+        return this.extractActiveThread(frame, message);
+      },
+      { desktop: true },
+    );
   }
 
   async listFavorites(): Promise<ListingSummary[]> {
@@ -444,8 +478,12 @@ export class BrowserClient implements BunjangTransport {
     return true;
   }
 
-  private async withPage<T>(requireSession: boolean, run: (page: Page) => Promise<T>): Promise<T> {
-    return this.withPageAttempt(requireSession, run, 0);
+  private async withPage<T>(
+    requireSession: boolean,
+    run: (page: Page) => Promise<T>,
+    opts: WithPageOptions = {},
+  ): Promise<T> {
+    return this.withPageAttempt(requireSession, run, 0, opts);
   }
 
   private async softSettle(page: Page): Promise<void> {
@@ -475,27 +513,36 @@ export class BrowserClient implements BunjangTransport {
   }
 
   private async openTalkInbox(page: Page) {
-    await this.navigateViaNavText(page, ['채팅', '번개톡']);
+    // Requires the desktop User-Agent (see `withPage`'s `desktop` option): under the
+    // default mobile UA, m.bunjang.co.kr/talk has no nav entry point and this route
+    // doesn't render the talk.bunjang.co.kr iframe at all.
+    await this.gotoAuthenticated(page, talkInboxUrl());
     await page.waitForTimeout(2500);
     const frame = await this.getTalkFrame(page);
     await this.dismissTalkNotices(frame);
     return frame;
   }
 
-  private async withPageAttempt<T>(requireSession: boolean, run: (page: Page) => Promise<T>, attempt: number): Promise<T> {
+  private async withPageAttempt<T>(
+    requireSession: boolean,
+    run: (page: Page) => Promise<T>,
+    attempt: number,
+    opts: WithPageOptions = {},
+  ): Promise<T> {
     if (requireSession && attempt === 0) {
       const status = await this.getSessionStatus();
       if (!status.authenticated) {
         await this.loginInteractive();
-        return this.withPageAttempt(requireSession, run, attempt + 1);
+        return this.withPageAttempt(requireSession, run, attempt + 1, opts);
       }
     }
     this.store.ensure();
     const context = await chromium.launchPersistentContext(this.store.userDataDir, {
       headless: true,
-      viewport: { width: 430, height: 932 },
+      viewport: opts.desktop ? { width: 1280, height: 900 } : { width: 430, height: 932 },
       locale: 'ko-KR',
       args: ['--password-store=basic'],
+      ...(opts.desktop ? { userAgent: DESKTOP_USER_AGENT } : {}),
     });
     try {
       const page = context.pages()[0] ?? (await context.newPage());
@@ -515,7 +562,7 @@ export class BrowserClient implements BunjangTransport {
       if (error instanceof AuthRequiredError && attempt < 1) {
         await context.close();
         await this.loginInteractive();
-        return this.withPageAttempt(requireSession, run, attempt + 1);
+        return this.withPageAttempt(requireSession, run, attempt + 1, opts);
       }
       throw error;
     } finally {
@@ -527,6 +574,14 @@ export class BrowserClient implements BunjangTransport {
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     await this.softSettle(page);
     await this.dismissAppNudge(page);
+    // A listing that's been sold/paused/taken down renders a "숨겨진 상품입니다" (hidden
+    // item) placeholder with unrelated "similar products" content instead of a 404. Without
+    // this check, downstream steps (finding the favorite/contact button, reading the talk
+    // frame) fail with a confusing, unrelated error instead of surfacing the real cause.
+    const bodyText = await page.locator('body').innerText().catch(() => '');
+    if (bodyText.includes('숨겨진 상품입니다')) {
+      throw new Error(`Listing is hidden or no longer available on Bunjang: ${url}`);
+    }
     const verification = await this.detectSession(page);
     if (!verification.authenticated) {
       throw new AuthRequiredError(`Authentication required after navigating to ${url} (${verification.detectedBy}).`);
@@ -666,8 +721,17 @@ export class BrowserClient implements BunjangTransport {
     await frame.waitForTimeout(1200);
   }
 
+  /**
+   * The chat/contact button only exists in the desktop-UA-rendered layout (see
+   * `withPage`'s `desktop` option / DESKTOP_USER_AGENT) — under the default mobile UA the
+   * bottom action bar has no chat entry at all, only a favorite icon and an app-store
+   * deep link. `aria-label="번개톡 대화하기"` is the current (2026-07) desktop selector;
+   * the older class-based selectors are kept as a defensive fallback in case a future
+   * redesign reintroduces a text-based mobile button.
+   */
   private async findContactButton(page: Page) {
     const locators = [
+      page.locator('button[aria-label="번개톡 대화하기"]').first(),
       page.locator('button[class*="ProductSummarystyle__ContactButton"]').first(),
       page.locator('button[class*="ContactButton"]').filter({ hasText: /^번개톡$/ }).first(),
       page.locator('button').filter({ hasText: /^번개톡$/ }).nth(1),

@@ -18,14 +18,18 @@ describe('public Bunjang CLI smoke', () => {
     expect(payload.items[0]?.id).toMatch(/^\d+$/);
   });
 
-  it('fetches a public item detail through the CLI', async () => {
+  it('fetches a public item detail through the CLI', { timeout: 15000 }, async () => {
     const { stdout } = await execFileAsync('node', ['dist/src/cli.js', '--json', 'item', 'get', '391084752']);
     const payload = JSON.parse(stdout) as { item: { id: string; title: string } };
     expect(payload.item.id).toBe('391084752');
     expect(payload.item.title.length).toBeGreaterThan(0);
   });
 
-  it('returns a non-null item price for a known public listing', async () => {
+  // No explicit timeout previously: this launches a real browser like every other e2e
+  // case here, but was the only one left on vitest's 5000ms default, so it flaked under
+  // ordinary launch-time variance (observed timing out at ~5s while its sibling test above,
+  // doing the same browser launch, took ~4.4s). Bring it in line with the rest of the file.
+  it('returns a non-null item price for a known public listing', { timeout: 15000 }, async () => {
     const { stdout } = await execFileAsync('node', ['dist/src/cli.js', '--json', 'item', 'get', '391084752']);
     const payload = JSON.parse(stdout) as { item: { price: number | null } };
     expect(typeof payload.item.price).toBe('number');
@@ -57,6 +61,19 @@ describe.skipIf(!hasAuthenticatedOptIn)('authenticated Bunjang smoke', () => {
     const { stdout } = await execFileAsync('node', ['dist/src/cli.js', '--json', 'chat', 'list']);
     const payload = JSON.parse(stdout) as { threads: unknown[] } | { error: string };
     expect('threads' in payload).toBe(true);
+  });
+
+  // Regression coverage for the 2026-07 Bunjang redesign's chat/contact button: it only
+  // exists in the desktop-UA-rendered layout (see BrowserClient's `desktop` withPage
+  // option), so `chat start`/`findContactButton` need the desktop User-Agent to find it at
+  // all. This listing is a long-lived, real "숨겨진 상품" (hidden/delisted) fixture, so
+  // this doubles as coverage for the clear hidden-listing error added alongside the fix
+  // (previously this failure mode surfaced as a confusing "Unable to locate talk frame").
+  it('reports a clear error for chat start against a hidden/delisted listing', { timeout: 30000 }, async () => {
+    const listingId = '418768745';
+    await expect(
+      execFileAsync('node', ['dist/src/cli.js', '--json', 'chat', 'start', listingId, '--message', 'test']),
+    ).rejects.toThrow(/hidden or no longer available/);
   });
 
   // Regression coverage for the 2026-07 Bunjang mobile-web redesign: the favorite
