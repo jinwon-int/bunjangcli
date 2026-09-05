@@ -4,6 +4,7 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
   realpathSync,
@@ -13,7 +14,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 
 export interface SessionMetadata {
   lastLoginAt: string | null;
@@ -22,6 +23,24 @@ export interface SessionMetadata {
 
 /** Files/dirs that identify a directory as a bunjang-cli session (export target). */
 const SESSION_MARKER_ENTRIES = ['session.json', 'browser-profile'] as const;
+
+/** Resolve symlinks in existing ancestors, including for a not-yet-created destination. */
+function canonicalPath(path: string): string {
+  try {
+    lstatSync(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    return join(canonicalPath(dirname(path)), basename(path));
+  }
+  // The JS implementation lexically collapses '..' before resolving symlinks.
+  // Native resolution follows the same directory traversal as filesystem writes.
+  return realpathSync.native(path);
+}
+
+function containsPath(parent: string, child: string): boolean {
+  const rel = relative(parent, child);
+  return rel === '' || (!isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`));
+}
 
 interface EntryKind {
   isDirectory: boolean;
@@ -135,24 +154,56 @@ export class SessionStore {
         'No local session found to export. Run `auth login` on a machine with a display first, then export from there.',
       );
     }
-    if (existsSync(destPath)) {
-      if (!statSync(destPath).isDirectory()) {
-        throw new Error(`Destination "${destPath}" already exists and is not a directory.`);
-      }
-      if (readdirSync(destPath).length > 0) {
-        if (!opts.force) {
+    const source = canonicalPath(this.rootDir);
+    const destination = canonicalPath(destPath);
+    if (containsPath(source, destination) || containsPath(destination, source)) {
+      throw new Error('Export destination and local session directory overlap. Choose a separate directory.');
+    }
+    const validateDestination = (): void => {
+      if (existsSync(destPath)) {
+        if (lstatSync(destPath).isSymbolicLink()) {
+          throw new Error(`Destination "${destPath}" is a symbolic link. Choose a separate directory.`);
+        }
+        if (!statSync(destPath).isDirectory()) {
+          throw new Error(`Destination "${destPath}" already exists and is not a directory.`);
+        }
+        if (readdirSync(destPath).length > 0 && !opts.force) {
           throw new Error(`Destination "${destPath}" already exists and is not empty. Pass --force to overwrite it.`);
         }
-        // --force replaces the destination outright. fs.cpSync merges into an existing
-        // directory rather than mirroring it, so without clearing first, stale files from
-        // an older export at the same path would survive alongside the fresh one.
-        rmSync(destPath, { recursive: true, force: true });
       }
+    };
+    validateDestination();
+    const metadata = this.readMetadata();
+    mkdirSync(dirname(destination), { recursive: true });
+    // Build on the destination filesystem so publication can use rename. The
+    // private staging directory also keeps an incomplete copy out of the target.
+    const staging = mkdtempSync(join(dirname(destination), '.bunjang-export-'));
+    const stagedSession = join(staging, 'session');
+    const previous = join(staging, 'previous');
+    let preserveRecovery = false;
+    try {
+      cpSync(this.rootDir, stagedSession, { recursive: true });
+      hardenPermissionsRecursive(stagedSession);
+      validateDestination();
+      const hadPrevious = existsSync(destPath);
+      if (hadPrevious) renameSync(destPath, previous);
+      try {
+        renameSync(stagedSession, destPath);
+      } catch (error) {
+        if (hadPrevious) {
+          try {
+            renameSync(previous, destPath);
+          } catch {
+            preserveRecovery = true;
+            throw new Error(`Export failed; previous export preserved at "${previous}" for recovery.`, { cause: error });
+          }
+        }
+        throw error;
+      }
+      return { exportedTo: destPath, metadata };
+    } finally {
+      if (!preserveRecovery) rmSync(staging, { recursive: true, force: true });
     }
-    mkdirSync(destPath, { recursive: true });
-    cpSync(this.rootDir, destPath, { recursive: true });
-    hardenPermissionsRecursive(destPath);
-    return { exportedTo: destPath, metadata: this.readMetadata() };
   }
 
   /**
