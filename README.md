@@ -105,6 +105,11 @@ npx @jinon86/bunjang-cli auth status   # authenticated: true 확인
 
 `auth import`는 기존 세션이 있으면 지우지 않고 `<config-dir>.bak-<timestamp>`로 백업한 뒤 덮어씁니다. 대상 디렉토리가 `session.json`/`browser-profile`을 갖춘 export 결과가 아니면 가져오기를 거부하고, 자기 자신의 세션 디렉토리를 스스로 import하는 것도 거부합니다.
 
+`auth export`는 원본 세션과 같거나 상위·하위인 경로를 `--force`로도 허용하지 않습니다.
+심볼릭 링크를 거친 경로도 실제 위치로 확인합니다. 복사를 완성한 뒤 목적지를 교체하므로
+복사 실패 시 기존 내보내기 자료가 남습니다. 교체 실패 시 기존 자료를 되돌리며, 되돌리기까지
+실패하면 오류에 표시된 `.bunjang-export-*/previous` 경로를 복구용으로 보존합니다.
+
 브라우저는 쿠키를 OS 키링(gnome-keyring/kwallet/macOS Keychain 등)으로 암호화해 저장하는 경우가 있는데, 이러면 다른 머신(특히 키링이 없는 헤드리스 서버)으로 복사했을 때 쿠키를 못 읽을 수 있습니다. 이를 피하려고 `auth login`/`auth status`/`auth import` 후 상태확인이 모두 Chromium을 **`--password-store=basic`**(키링 없이도 항상 같은 방식으로 동작하는 이식 가능한 암호화)로 실행하도록 고정해뒀습니다. 다만 이 변경 **이전에** `auth login`한 세션은 이미 키링으로 암호화됐을 수 있으니, `auth import` 후 `authenticated: false`가 나오면 원본 머신에서 `auth logout` 후 다시 `auth login`(→ 재-export)해보세요.
 
 ⚠️ **내보낸 디렉토리는 로그인 쿠키/브라우저 프로필을 담고 있어 사실상 비밀번호와 같습니다.** 보안 채널(scp/rsync over SSH)로만 옮기고, git에 커밋하거나 내용을 다른 곳에 붙여넣지 마세요. 옮긴 뒤에는 남은 사본을 지우는 게 안전합니다. 기존 워크어라운드(`~/.config/bunjang-cli/` 폴더를 통째로 수동 복사)는 계속 동작하지만, `export`/`import`가 유효성 검증·백업·권한 고정(0700/0600)까지 해주는 정식 경로입니다.
