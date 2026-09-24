@@ -38,7 +38,7 @@
     "prepublishOnly": "pnpm lint && pnpm test && pnpm build"
   },
   "dependencies": {
-    "@toon-format/toon": "^2.1.0",
+    "@toon-format/toon": "^2.3.1",
     "commander": "^14.0.1",
     "gpt-tokenizer": "^3.4.0",
     "playwright": "^1.55.1",
@@ -47,6 +47,6 @@
   "devDependencies": {
     "@types/node": "^24.3.0",
     "typescript": "^5.9.2",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.6"
   }
 }
