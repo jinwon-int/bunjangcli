@@ -40,8 +40,19 @@ interface WithPageOptions {
   desktop?: boolean;
 }
 
-const SEARCH_CARD_EVAL = () => {
-  const anchors = Array.from(document.querySelectorAll('a[href*="/products/"]')) as HTMLAnchorElement[];
+// Favorites ("찜") drawer markers in the current (2026-07+) m.bunjang.co.kr build. The drawer
+// is a `bun-ui-portal` overlay titled "관심 상품" with "찜" / "최근 본 상품" tabs, opened from
+// the home page's "찜" shortcut tile (only rendered in the desktop-UA layout). The two
+// empty-state strings let `readFavoritesDrawer` tell "no favorites" / "logged out" apart
+// from "the drawer rendered something we don't recognize" instead of returning [] for all.
+const FAVORITES_DRAWER_TITLE = '관심 상품';
+const FAVORITES_EMPTY_TEXT = '아직 찜한 상품이 없어요.';
+const FAVORITES_LOGGED_OUT_TEXT = '찜한 상품은 로그인 후 확인할 수 있어요';
+
+// `root` defaults to the whole document (search results page); `listFavorites` passes the
+// favorites drawer element instead, so home-feed cards behind the overlay aren't scraped.
+const SEARCH_CARD_EVAL = (root: ParentNode | void) => {
+  const anchors = Array.from((root || document).querySelectorAll('a[href*="/products/"]')) as HTMLAnchorElement[];
   const seen = new Set<string>();
   return anchors.flatMap((anchor) => {
     const href = anchor.href;
@@ -349,21 +360,29 @@ export class BrowserClient implements BunjangTransport {
   }
 
   async listFavorites(): Promise<ListingSummary[]> {
-    return this.withPage(true, async (page) => {
-      await this.navigateViaNavText(page, ['찜', '관심']);
-      await this.softSettle(page);
-      const items = await page.evaluate(SEARCH_CARD_EVAL);
-      return items.map((card) => ({
-        id: card.id,
-        title: card.title.trim(),
-        url: card.href,
-        price: parsePrice(card.cardText),
-        currency: 'KRW',
-        imageUrl: card.imageUrl,
-        transportUsed: 'browser',
-        raw: { text: card.cardText },
-      }));
-    });
+    return this.withPage(
+      true,
+      async (page) => {
+        await this.gotoAuthenticated(page, 'https://m.bunjang.co.kr/');
+        const drawer = await this.readFavoritesDrawer(page);
+        if (drawer.state === 'logged-out') {
+          throw new AuthRequiredError('Favorites drawer reports a logged-out session.');
+        }
+        return drawer.cards.map((card) => ({
+          id: card.id,
+          title: card.title.trim(),
+          url: card.href,
+          price: parsePrice(card.priceText ?? card.cardText),
+          currency: 'KRW',
+          imageUrl: card.imageUrl,
+          transportUsed: 'browser',
+          raw: { text: card.cardText, source: 'favorites-drawer' },
+        }));
+      },
+      // The "찜" shortcut that opens the favorites drawer only exists in the desktop-UA
+      // home layout; the default mobile layout has no favorites entry point at all.
+      { desktop: true },
+    );
   }
 
   async addFavorite(listingId: string): Promise<ListingDetail> {
@@ -493,23 +512,49 @@ export class BrowserClient implements BunjangTransport {
     await page.waitForTimeout(400);
   }
 
-  private async navigateViaNavText(page: Page, labels: string[]): Promise<string> {
-    await this.gotoAuthenticated(page, 'https://m.bunjang.co.kr/');
-    for (const label of labels) {
-      const exact = page.getByRole('link', { name: new RegExp(label) }).first();
-      if (await exact.isVisible().catch(() => false)) {
-        await exact.click();
-        await this.softSettle(page);
-        return page.url();
-      }
-      const button = page.getByRole('button', { name: new RegExp(label) }).first();
-      if (await button.isVisible().catch(() => false)) {
-        await button.click();
-        await this.softSettle(page);
-        return page.url();
-      }
+  /**
+   * Opens the favorites drawer from the home page (caller must already be on it) and reads
+   * the favorited product cards out of the drawer only. Fails closed: if the drawer can't be
+   * opened, or it renders neither product cards nor a known empty state, this throws rather
+   * than returning [] / unrelated cards (see GitHub issue jinwon-int/bunjangcli#4).
+   *
+   * The entry point is matched by exact accessible name "찜": a `/찜/` regex also matches
+   * every product card's "찜하기" heart button and the product-card links that contain
+   * them, which is how the old nav-text lookup ended up on a random listing's detail page
+   * (and could have toggled a favorite on it).
+   */
+  private async readFavoritesDrawer(page: Page): Promise<{
+    state: 'items' | 'empty' | 'logged-out';
+    cards: ReturnType<typeof SEARCH_CARD_EVAL>;
+  }> {
+    const entry = page.getByRole('button', { name: '찜', exact: true }).first();
+    if (!(await entry.isVisible().catch(() => false))) {
+      throw new Error('Unable to find the "찜" (favorites) shortcut on the Bunjang home page.');
     }
-    throw new Error(`Unable to find navigation entry for labels: ${labels.join(', ')}`);
+    await entry.click();
+    // The `.bun-ui-portal` wrapper itself has no layout box (Playwright never considers it
+    // "visible"), so wait on the drawer's title text inside it instead.
+    const drawer = page.locator('.bun-ui-portal').filter({ hasText: FAVORITES_DRAWER_TITLE }).last();
+    await drawer.getByText(FAVORITES_DRAWER_TITLE, { exact: true }).first().waitFor({ state: 'visible', timeout: 10000 }).catch(() => {
+      throw new Error(`Favorites drawer ("${FAVORITES_DRAWER_TITLE}") did not open after clicking the "찜" shortcut.`);
+    });
+    const loggedOut = drawer.getByText(FAVORITES_LOGGED_OUT_TEXT);
+    const empty = drawer.getByText(FAVORITES_EMPTY_TEXT);
+    // The drawer's list is fetched after it opens; wait for whichever outcome renders first.
+    await drawer
+      .locator('a[href*="/products/"]')
+      .or(loggedOut)
+      .or(empty)
+      .first()
+      .waitFor({ state: 'visible', timeout: 15000 })
+      .catch(() => {});
+    if (await loggedOut.isVisible().catch(() => false)) return { state: 'logged-out', cards: [] };
+    if (await empty.isVisible().catch(() => false)) return { state: 'empty', cards: [] };
+    const cards = await drawer.evaluate(SEARCH_CARD_EVAL);
+    if (cards.length === 0) {
+      throw new Error('Favorites drawer opened but showed no recognizable product cards or empty state; the drawer layout may have changed.');
+    }
+    return { state: 'items', cards };
   }
 
   private async openTalkInbox(page: Page) {
