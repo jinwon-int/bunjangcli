@@ -51,10 +51,17 @@ describe.skipIf(!hasAuthenticatedOptIn)('authenticated Bunjang smoke', () => {
     expect(payload.status.authenticated).toBe(true);
   });
 
-  it('executes at least one authenticated read flow', { timeout: 30000 }, async () => {
-    const { stdout } = await execFileAsync('node', ['dist/src/cli.js', '--json', 'favorite', 'list']);
-    const payload = JSON.parse(stdout) as { items: unknown[] } | { error: string };
-    expect('items' in payload).toBe(true);
+  // `'items' in payload` alone let a wrong page pass silently (#4: the old nav-text lookup
+  // landed on a random listing and scraped its "similar products"). Assert the items really
+  // came from the favorites drawer and look like listings; membership of a known listing is
+  // checked in the add/remove round-trip below.
+  it('lists favorites from the favorites drawer', { timeout: 30000 }, async () => {
+    const items = await listFavorites();
+    for (const item of items) {
+      expect(item.id).toMatch(/^\d+$/);
+      expect(item.url).toMatch(new RegExp(`/products/${item.id}(?:[/?#]|$)`));
+      expect(item.raw?.source).toBe('favorites-drawer');
+    }
   });
 
   it('executes an authenticated chat read smoke path', { timeout: 30000 }, async () => {
@@ -82,21 +89,35 @@ describe.skipIf(!hasAuthenticatedOptIn)('authenticated Bunjang smoke', () => {
   // and asserts against the listing's real favoriteCount (fetched fresh via the
   // read-only `item get` path) rather than trusting the mutating command's own report,
   // so it fails closed if the click silently lands on the wrong element again.
-  it('adds then removes a favorite, verified via a fresh item lookup', { timeout: 60000 }, async () => {
+  it('adds then removes a favorite, verified via a fresh item lookup and favorite list', { timeout: 120000 }, async () => {
     const listingId = '394694708';
     const countBefore = await fetchFavoriteCount(listingId);
+    expect((await listFavorites()).map((item) => item.id)).not.toContain(listingId);
 
     const addResult = await execFileAsync('node', ['dist/src/cli.js', '--json', 'favorite', 'add', listingId]);
     const addPayload = JSON.parse(addResult.stdout) as { item: { raw?: { favoritedAfter?: boolean | null } } };
     expect(addPayload.item.raw?.favoritedAfter).not.toBe(false);
     expect(await fetchFavoriteCount(listingId)).toBe(countBefore + 1);
+    // The listing we just favorited must show up in `favorite list` — this is what catches
+    // `favorite list` returning some other page's cards (#4).
+    expect((await listFavorites()).map((item) => item.id)).toContain(listingId);
 
     const removeResult = await execFileAsync('node', ['dist/src/cli.js', '--json', 'favorite', 'remove', listingId]);
     const removePayload = JSON.parse(removeResult.stdout) as { item: { raw?: { favoritedAfter?: boolean | null } } };
     expect(removePayload.item.raw?.favoritedAfter).not.toBe(true);
     expect(await fetchFavoriteCount(listingId)).toBe(countBefore);
+    expect((await listFavorites()).map((item) => item.id)).not.toContain(listingId);
   });
 });
+
+async function listFavorites(): Promise<Array<{ id: string; url: string; raw?: { source?: string } }>> {
+  const { stdout } = await execFileAsync('node', ['dist/src/cli.js', '--json', 'favorite', 'list']);
+  const payload = JSON.parse(stdout) as { items?: unknown } | { error: string };
+  if (!('items' in payload) || !Array.isArray(payload.items)) {
+    throw new Error(`Expected favorite list to return an items array, got ${stdout.slice(0, 300)}`);
+  }
+  return payload.items as Array<{ id: string; url: string; raw?: { source?: string } }>;
+}
 
 async function fetchFavoriteCount(listingId: string): Promise<number> {
   const { stdout } = await execFileAsync('node', ['dist/src/cli.js', '--json', 'item', 'get', listingId]);
